@@ -1,36 +1,37 @@
 #!/bin/bash -e
+
 ##Cloudformation User data configuration script
 IPADDRESS=`curl http://169.254.169.254/latest/meta-data/public-ipv4`
-ACCOUNT_ID="$1"
-REGION="$2"
-ADMIN_ID=`cat /tmp/dl-auth.file | grep -ie "DatabaseUserName" | awk -F"|" '{print $2}'`
-PASSWORD=`cat /tmp/dl-auth.file | grep -ie "DatabaseUserPassword" | awk -F"|" '{print $2}'`
-EMAIL_ID="$3"
-RDS_ENDPOINT="$4"
-REDSHIFT_ENDPOINT="$5"
-REDSHIFT_IAM_ARN="$6"
-RDS_DBIDENTIFIER="$7"
-RDS_DATABASE="${8}"
-REDSHIFT_CLUSTERIDENTIFIER="${9}"
-REDSHIFT_DATABASE="${10}"
-ELASTICSEARCHEP="${11}"
-BUCKET="${12}"
-STACKID="${13}"
-STACKPART="${14}"
-STACKNAME="${15}"
-WAITCONDITION="${16}"
-STREAMNAME="${17}"
-CLOUDTRAIL="${18}"
-QuickStartS3URL="${19}"
-QSS3BucketName="${20}"
-QSS3KeyPrefix="${21}"
+ACCOUNT_ID=`cat /tmp/dl-parameters.file | grep -ie "AWSAccountID" | awk -F"|" '{print $2}'`
+REGION=`cat /tmp/dl-parameters.file | grep -ie "AWSRegion" | awk -F"|" '{print $2}'`
+ADMIN_ID=`cat /tmp/dl-parameters.file | grep -ie "DatabaseUserName" | awk -F"|" '{print $2}'`
+PASSWORD=`cat /tmp/dl-parameters.file | grep -ie "DatabaseUserPassword" | awk -F"|" '{print $2}'`
+EMAIL_ID=`cat /tmp/dl-parameters.file | grep -ie "AdminEmailID" | awk -F"|" '{print $2}'`
+RDS_ENDPOINT=`cat /tmp/dl-parameters.file | grep -ie "RDSdbEndPointAddr" | awk -F"|" '{print $2}'`
+REDSHIFT_ENDPOINT=`cat /tmp/dl-parameters.file | grep -ie "RedshiftClusterEndPointAddr" | awk -F"|" '{print $2}'`
+REDSHIFT_IAM_ARN=`cat /tmp/dl-parameters.file | grep -ie "RedshiftSecondaryRoleARN" | awk -F"|" '{print $2}'`
+RDS_DBIDENTIFIER=`cat /tmp/dl-parameters.file | grep -ie "RDSIdentifier" | awk -F"|" '{print $2}'`
+RDS_DATABASE=`cat /tmp/dl-parameters.file | grep -ie "RDSDatabaseName" | awk -F"|" '{print $2}'`
+REDSHIFT_CLUSTERIDENTIFIER=`cat /tmp/dl-parameters.file | grep -ie "RedshiftClusterIdentifier" | awk -F"|" '{print $2}'`
+REDSHIFT_DATABASE=`cat /tmp/dl-parameters.file | grep -ie "RedshiftDatabase" | awk -F"|" '{print $2}'`
+ELASTICSEARCHEP=`cat /tmp/dl-parameters.file | grep -ie "ElasticSearchEndPoint" | awk -F"|" '{print $2}'`
+BUCKET=`cat /tmp/dl-parameters.file | grep -ie "DatalakeS3Bucket" | awk -F"|" '{print $2}'`
+STACKID=`cat /tmp/dl-parameters.file | grep -ie "StackID" | awk -F"|" '{print $2}'`
+STACKPART=`cat /tmp/dl-parameters.file | grep -ie "StackPartSuffix" | awk -F"|" '{print $2}'`
+STACKNAME=`cat /tmp/dl-parameters.file | grep -ie "StackName" | awk -F"|" '{print $2}'`
+WAITCONDITION=`cat /tmp/dl-parameters.file | grep -ie "WaitCondition" | awk -F"|" '{print $2}'`
+STREAMNAME=`cat /tmp/dl-parameters.file | grep -ie "FirehoseStreamName" | awk -F"|" '{print $2}'`
+CLOUDTRAIL=`cat /tmp/dl-parameters.file | grep -ie "DatalakeCloudTrail" | awk -F"|" '{print $2}'`
+QuickStartS3URL=`cat /tmp/dl-parameters.file | grep -ie "QuickStartS3URL" | awk -F"|" '{print $2}'`
+QSS3BucketName=`cat /tmp/dl-parameters.file | grep -ie "QSS3BucketName" | awk -F"|" '{print $2}'`
+QSS3KeyPrefix=`cat /tmp/dl-parameters.file | grep -ie "QSS3KeyPrefix" | awk -F"|" '{print $2}'`
+WebserverELBEP=`cat /tmp/dl-parameters.file | grep -ie "WebServerELBEndpoint" | awk -F"|" '{print $2}'`
 REDSHIFTARN="arn:aws:redshift:${REGION}:${ACCOUNT_ID}:cluster:${REDSHIFT_CLUSTERIDENTIFIER}"
 WORKERGROUP="datalakeworkergroup-${ACCOUNT_ID}-${STACKPART}"
 TASKRUNNER="datalaketaskrunner-${ACCOUNT_ID}-${STACKPART}"
 
-
-mkdir -p /var/www/html; chown -R apache:apache /var/www/html;
-aws configure set default.region ${REGION};
+mkdir -p /var/www/html; chown -R apache:apache /var/www/html
+aws configure set default.region ${REGION}
 
 #Instance tagging
 instanceid=`curl http://169.254.169.254/latest/meta-data/instance-id`
@@ -38,11 +39,10 @@ publicdns=`curl http://169.254.169.254/latest/meta-data/public-hostname`
 aws ec2 create-tags --resources ${instanceid} --tags 'Key'="Name",'Value'="datalake-webserver-${ACCOUNT_ID}-${STACKPART}" --region ${REGION}
 aws ec2 create-tags --resources ${instanceid} --tags 'Key'="solution",'Value'="datalake-${ACCOUNT_ID}-${STACKPART}" --region ${REGION}
 
+setenforce 0 && echo "Completed disabling the SELINUX"
+chkconfig httpd on && chkconfig mysqld on && echo "Completed chkconfig on Mysql and httpd startup"
 
-setenforce 0;chkconfig httpd on;chkconfig mysqld on;
-RDSHOST=(${RDS_ENDPOINT//:/ })
-
-aws datapipeline create-default-roles;
+aws datapipeline create-default-roles
 
 #Mysql configuration
 /usr/bin/mysql_secure_installation<<EOF
@@ -57,28 +57,28 @@ y
 EOF
 
 
-mysql -u ${ADMIN_ID} -p${PASSWORD} --host "${RDSHOST[0]}" "${RDS_DATABASE}" -e "CREATE TABLE IF NOT EXISTS ${RDS_DATABASE}.user(username varchar(200),password varchar(200), PRIMARY KEY (username));"
-mysql -u ${ADMIN_ID} -p${PASSWORD} --host "${RDSHOST[0]}" "${RDS_DATABASE}" -e "CREATE TABLE IF NOT EXISTS ${RDS_DATABASE}.buckets(bucketname varchar(200),statementid varchar(200), PRIMARY KEY (bucketname));"
-mysql -u ${ADMIN_ID} -p${PASSWORD} --host "${RDSHOST[0]}" "${RDS_DATABASE}" -e "INSERT INTO ${RDS_DATABASE}.user(username,password) VALUES ('${ADMIN_ID}',MD5('${PASSWORD}'));"
+mysql -u ${ADMIN_ID} -p${PASSWORD} --host "${RDS_ENDPOINT}" "${RDS_DATABASE}" -e "CREATE TABLE IF NOT EXISTS ${RDS_DATABASE}.user(username varchar(200),password varchar(200), PRIMARY KEY (username));"
+mysql -u ${ADMIN_ID} -p${PASSWORD} --host "${RDS_ENDPOINT}" "${RDS_DATABASE}" -e "CREATE TABLE IF NOT EXISTS ${RDS_DATABASE}.buckets(bucketname varchar(200),statementid varchar(200), PRIMARY KEY (bucketname));"
+mysql -u ${ADMIN_ID} -p${PASSWORD} --host "${RDS_ENDPOINT}" "${RDS_DATABASE}" -e "INSERT INTO ${RDS_DATABASE}.user(username,password) VALUES ('${ADMIN_ID}',MD5('${PASSWORD}'));"
 
 
 if ! aws s3 cp s3://${BUCKET}/multiAZ/instance.active instance.active --region ${REGION} --quiet --sse AES256
 then
+
 # Setup catalog lambda code
-wget -A.zip ${QuickStartS3URL}/${QSS3BucketName}/${QSS3KeyPrefix}/scripts/lambdas/writetoES.zip; mkdir -p /var/www/html/lambes; unzip writetoES.zip -d /var/www/html/lambes; sed -ie "s|oldelasticsearchep|${ELASTICSEARCHEP}|g" /var/www/html/lambes/writetoES/lambda_function.py; rm -rf writetoES.zip;cd /var/www/html/lambes/writetoES;zip -r writetoESX.zip *;aws s3 cp writetoESX.zip s3://$BUCKET/lambdas/writetoESX.zip --region $REGION --sse AES256;
+mkdir -p /var/www/html/lambes; unzip /home/ec2-user/writetoES.zip -d /var/www/html/lambes; sed -ie "s|oldelasticsearchep|${ELASTICSEARCHEP}|g" /var/www/html/lambes/writetoES/lambda_function.py; rm -rf writetoES.zip;cd /var/www/html/lambes/writetoES;zip -r writetoESX.zip *;aws s3 cp writetoESX.zip s3://$BUCKET/lambdas/writetoESX.zip --region $REGION --sse AES256;
 
 /opt/aws/bin/cfn-signal -e 0 ${WAITCONDITION}
 echo "FirstRun-Lambda-signal-check"
 fi
+
+
 ##########WebApp configuration########################################
-wget -A.zip ${QuickStartS3URL}/${QSS3BucketName}/${QSS3KeyPrefix}/scripts/web/datalake.zip; unzip datalake.zip -d /var/www/html; chmod 777 /var/www/html/home/welcome*;
+unzip /home/ec2-user/datalake.zip -d /var/www/html; chmod 777 /var/www/html/home/welcome*;
 rm -rf /etc/php.ini; mv /var/www/html/configurations/php.ini /etc/php.ini;chown apache:apache /etc/php.ini; chown -R apache:apache /var/www/html;service httpd restart;
 
-
-
 #Zeppelin configuration
-wget -A.tgz http://apache.claz.org/zeppelin/zeppelin-0.7.0/zeppelin-0.7.0-bin-all.tgz; mkdir -p /var/www/html/zeppelin; tar -xf zeppelin-0.7.0-bin-all.tgz -C /var/www/html/zeppelin; chown -R apache /var/www/html/zeppelin;/var/www/html/zeppelin/zeppelin-0.7.0-bin-all/bin/zeppelin-daemon.sh start
-
+mkdir -p /var/www/html/zeppelin; tar -xf /home/ec2-user/zeppelin-0.7.2-bin-all.tgz -C /var/www/html/zeppelin; chown -R apache /var/www/html/zeppelin;/var/www/html/zeppelin/zeppelin-0.7.2-bin-all/bin/zeppelin-daemon.sh start
 
 if ! aws s3 cp s3://${BUCKET}/multiAZ/instance.active instance.active --region ${REGION} --quiet --sse AES256
 then
@@ -90,7 +90,7 @@ echo "FirstRun-ElasticsearchIndexCreation-check"
 fi
 
 ######TaskRunner#######################################################
-mkdir -p /home/ec2-user/TaskRunner; wget -A.jar ${QuickStartS3URL}/${QSS3BucketName}/${QSS3KeyPrefix}/scripts/resources/TaskRunner-1.0.jar; mv TaskRunner-1.0.jar /home/ec2-user/TaskRunner/.; cd /home/ec2-user/TaskRunner; java -jar TaskRunner-1.0.jar --workerGroup=${WORKERGROUP} --region=${REGION} --logUri=s3://${BUCKET}/TaskRunnerLogs --taskrunnerId ${TASKRUNNER} > TaskRunner.out 2>&1 < /dev/null &
+mkdir -p /home/ec2-user/TaskRunner;mv /home/ec2-user/TaskRunner-1.0.jar /home/ec2-user/TaskRunner/.; cd /home/ec2-user/TaskRunner; java -jar TaskRunner-1.0.jar --workerGroup=${WORKERGROUP} --region=${REGION} --logUri=s3://${BUCKET}/TaskRunnerLogs --taskrunnerId ${TASKRUNNER} > TaskRunner.out 2>&1 < /dev/null &
 
 
 cat <<EOT >> /var/www/html/root/datalake.ini
@@ -101,7 +101,7 @@ accountid="${ACCOUNT_ID}"
 adminid="${ADMIN_ID}"
 password="${PASSWORD}"
 email="${EMAIL_ID}"
-ipaddress="${IPADDRESS}"
+ipaddress="${WebserverELBEP}"
 
 [stack]
 stackid="${STACKID}"
@@ -134,24 +134,28 @@ cloudtrailname="${CLOUDTRAIL}"
 
 EOT
 
+
 chown -R apache:apache /var/www/
+
 
 if ! aws s3 cp s3://${BUCKET}/multiAZ/instance.active instance.active --region ${REGION} --quiet --sse AES256
 then
 #attach iam role to redshift
-curl http://${IPADDRESS}/scripts/attach-iam-role-to-redshift.php;
+curl http://${WebserverELBEP}/scripts/attach-iam-role-to-redshift.php;
 echo "FirstRun-RedshiftRoleModify-check"
 fi
+
 
 #Sending out email to the Administrator
 if ! aws s3 cp s3://${BUCKET}/multiAZ/instance.active instance.active --region ${REGION} --quiet --sse AES256
 then
-  curl http://${IPADDRESS}/scripts/send-completion-email.php --data "region=${REGION}&username=${ADMIN_ID}&email=${EMAIL_ID}&ip=${publicdns}&password=${PASSWORD}&redeploy=no";
+  curl -XPOST http://${WebserverELBEP}/scripts/send-completion-email.php --data "region=${REGION}&username=${ADMIN_ID}&email=${EMAIL_ID}&ip=${WebserverELBEP}&password=${PASSWORD}&redeploy=no";
   echo "FirstRun-Email-check"
 else
-  curl http://${IPADDRESS}/scripts/send-completion-email.php --data "region=${REGION}&username=${ADMIN_ID}&email=${EMAIL_ID}&ip=${publicdns}&password=${PASSWORD}&redeploy=yes";
+  curl -XPOST http://${WebserverELBEP}/scripts/send-completion-email.php --data "region=${REGION}&username=${ADMIN_ID}&email=${EMAIL_ID}&ip=${WebserverELBEP}&password=${PASSWORD}&redeploy=yes";
   echo "Failover-Email-check"
 fi
+
 ##Autoscale sync section
 echo ${IPADDRESS} > /home/ec2-user/instance.active
 chown ec2-user:ec2-user /home/ec2-user/instance.active
